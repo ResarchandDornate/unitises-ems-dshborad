@@ -1,0 +1,326 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>UnityESS EMS Data Intelligence</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Chivo:wght@300;400;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  :root{
+    --blue:#016297; --blue-d:#014a73; --ink:#2D2D2D; --muted:#5A6B7B;
+    --light:#EAF2F6; --mid:#D6E5EE; --line:#D0D7DE; --bg:#F4F7F9; --white:#fff;
+    --ok:#1b7f4b; --warn:#B07A00; --bad:#B00020;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:Chivo,system-ui,Arial,sans-serif;color:var(--ink);background:var(--bg);font-size:14px}
+  header{background:var(--blue);color:#fff;padding:12px 20px;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+  header .brand{font-weight:700;font-size:18px;letter-spacing:.3px}
+  header .sub{font-weight:300;opacity:.85;font-size:13px}
+  header .spacer{flex:1}
+  header .who{font-size:12px;opacity:.9}
+  header button{background:rgba(255,255,255,.14);color:#fff;border:1px solid rgba(255,255,255,.35);
+    border-radius:6px;padding:6px 12px;cursor:pointer;font-family:inherit}
+  header button:hover{background:rgba(255,255,255,.25)}
+  nav{display:flex;gap:4px;background:var(--white);border-bottom:1px solid var(--line);padding:0 16px}
+  nav .tab{padding:12px 18px;cursor:pointer;border-bottom:3px solid transparent;font-weight:600;color:var(--muted)}
+  nav .tab.active{color:var(--blue);border-bottom-color:var(--blue)}
+  nav .spacer{flex:1}
+  nav .winwrap{display:flex;align-items:center;gap:8px;padding:6px 0}
+  select,input{font-family:inherit;font-size:14px;padding:7px 9px;border:1px solid var(--line);border-radius:6px;background:#fff}
+  main{padding:20px;max-width:1200px;margin:0 auto}
+  .row{display:grid;gap:16px}
+  .kpis{grid-template-columns:repeat(auto-fit,minmax(200px,1fr));margin-bottom:16px}
+  .card{background:#fff;border:1px solid var(--line);border-radius:10px;padding:16px}
+  .card h3{margin:0 0 4px;font-size:13px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.4px}
+  .kpi .big{font-size:30px;font-weight:700;color:var(--blue);line-height:1.1}
+  .kpi .cap{font-size:12px;color:var(--muted);margin-top:4px}
+  .grid2{grid-template-columns:1fr 1fr;margin-bottom:16px}
+  @media(max-width:820px){.grid2{grid-template-columns:1fr}}
+  .section-title{font-size:18px;font-weight:700;margin:22px 0 10px;color:var(--ink)}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line)}
+  th{background:var(--light);color:var(--ink);font-weight:600}
+  tbody tr:nth-child(even){background:#fafcfd}
+  td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+  .chip{display:inline-block;font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:999px;letter-spacing:.3px}
+  .chip.v{background:#e3f0e9;color:var(--ok)} .chip.d{background:#eaf2f6;color:var(--blue)}
+  .chip.i{background:#fdeeee;color:var(--bad)} .chip.n{background:#f3f0e6;color:var(--warn)}
+  .pill{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:700}
+  .pill.ok{background:#e3f0e9;color:var(--ok)} .pill.warn{background:#faf3df;color:var(--warn)} .pill.bad{background:#fdeeee;color:var(--bad)}
+  .banner{background:#fff8e6;border:1px solid #e9d9a8;color:#6b5600;border-radius:8px;padding:10px 14px;margin-bottom:16px;font-size:13px}
+  .notes{font-size:12px;color:var(--muted);margin-top:8px}
+  .notes li{margin:2px 0}
+  .muted{color:var(--muted)} .err{color:var(--bad);font-weight:600}
+  canvas{max-height:300px}
+  /* login */
+  .login{max-width:380px;margin:8vh auto;background:#fff;border:1px solid var(--line);border-radius:12px;padding:26px}
+  .login h2{margin:0 0 4px;color:var(--blue)}
+  .login p{margin:0 0 18px;color:var(--muted);font-size:13px}
+  .login label{display:block;font-size:12px;color:var(--muted);margin:12px 0 4px;font-weight:600}
+  .login input{width:100%}
+  .login button{width:100%;margin-top:18px;background:var(--blue);color:#fff;border:0;border-radius:8px;padding:11px;font-weight:700;cursor:pointer;font-size:15px}
+  .login .cfg{margin-top:16px;font-size:12px}
+  .hidden{display:none}
+  .foot{color:var(--muted);font-size:11px;text-align:center;padding:18px}
+  .gen{font-size:11px;color:var(--muted)}
+</style>
+</head>
+<body>
+
+<!-- ============ LOGIN ============ -->
+<div id="login" class="login">
+  <h2>UnityESS EMS</h2>
+  <p>Data Intelligence &amp; Reconciliation — operator sign-in</p>
+  <div id="loginErr" class="err" style="font-size:13px"></div>
+  <div id="baseUrlRow">
+    <label>Backend URL</label>
+    <input id="baseUrl" placeholder="http://localhost:8040">
+  </div>
+  <label>Identifier (email / phone / username)</label>
+  <input id="identifier" autocomplete="username">
+  <label>Password</label>
+  <input id="password" type="password" autocomplete="current-password">
+  <button id="loginBtn">Sign in</button>
+  <div class="cfg muted">Read-only. Uses your existing operator account. Token stays in this browser only.</div>
+</div>
+
+<!-- ============ APP ============ -->
+<div id="app" class="hidden">
+  <header>
+    <div>
+      <div class="brand">UnityESS &middot; EMS Data Intelligence</div>
+      <div class="sub">Gateway → Backend delivery, storage, frequency &amp; gaps</div>
+    </div>
+    <div class="spacer"></div>
+    <div class="who" id="who"></div>
+    <button id="refreshBtn">Refresh</button>
+    <button id="logoutBtn">Sign out</button>
+  </header>
+  <nav>
+    <div class="tab active" data-view="mgmt">Management</div>
+    <div class="tab" data-view="analyst">Data Analyst</div>
+    <div class="spacer"></div>
+    <div class="winwrap">
+      <span class="muted">Window</span>
+      <select id="window">
+        <option value="1h">1 hour</option><option value="6h">6 hours</option>
+        <option value="24h" selected>24 hours</option><option value="7d">7 days</option>
+        <option value="30d">30 days</option>
+      </select>
+    </div>
+  </nav>
+
+  <!-- MANAGEMENT -->
+  <main id="view-mgmt">
+    <div id="mgmtErr" class="err"></div>
+    <div class="banner" id="deliveryCaveat">
+      <b>Delivery vs storage:</b> this dashboard reports what the backend <b>stored</b>. Gateway
+      <i>generated / sent</i> counts are <b>NOT INSTRUMENTED</b> in the backend, so a true
+      gateway→backend <i>delivery</i> percentage is not shown. The figure below is a
+      <b>storage</b> success rate.
+    </div>
+    <div class="row kpis" id="kpis"></div>
+    <div class="row grid2">
+      <div class="card"><h3>Messages by stream (stored vs pending) <span class="chip v">VERIFIED</span></h3><canvas id="chartLedger"></canvas></div>
+      <div class="card"><h3>Pipeline health by stream <span class="chip v">VERIFIED</span></h3>
+        <div id="healthTable"></div></div>
+    </div>
+    <div class="row grid2">
+      <div class="card"><h3>Retention buckets</h3><div id="buckets"></div></div>
+      <div class="card"><h3>What needs attention</h3><ul class="notes" id="mgmtNotes"></ul></div>
+    </div>
+    <div class="gen" id="mgmtGen"></div>
+  </main>
+
+  <!-- ANALYST -->
+  <main id="view-analyst" class="hidden">
+    <div id="analystErr" class="err"></div>
+    <div class="section-title">S2 substream volume <span class="chip v">VERIFIED</span>
+      <span class="muted" style="font-size:13px;font-weight:400">(points in window; includes _q quality fields)</span></div>
+    <div class="card"><canvas id="chartS2"></canvas></div>
+
+    <div class="section-title">Per-signal frequency vs expected cadence
+      <span class="chip v">VERIFIED</span> <span class="chip d">DERIVED</span></div>
+    <div class="card">
+      <div style="margin-bottom:10px">
+        <span class="muted">Substream</span>
+        <select id="freqSub">
+          <option>pcs_extended</option><option>bms_extended</option><option>ems_system</option>
+          <option>remote_control</option><option>liquid_cooling</option><option>io_module</option>
+          <option>dehumidifier</option><option>fire_protection</option>
+        </select>
+        <span class="muted" style="margin-left:10px">observed interval = window ÷ points</span>
+      </div>
+      <div id="freqTable"></div>
+    </div>
+
+    <div class="section-title">PostgreSQL stream inventory <span class="chip v">VERIFIED</span></div>
+    <div class="card"><div id="streamTable"></div>
+      <div class="notes">One message can produce many records (e.g. S1 ≈ 4 rec/msg, S10 ≈ 22 rec/msg) — record rows will exceed ledger message counts.</div></div>
+
+    <div class="section-title">Stuck / failed ingestion <span class="chip d">DERIVED</span> <span class="chip n">codes NOT INSTRUMENTED</span></div>
+    <div class="card"><div id="failTable"></div>
+      <div class="notes">Stuck = lease-expired pending messages. It clears as the gateway resends and is not confirmed data loss. Per-failure error codes live only in ephemeral container logs.</div></div>
+    <div class="gen" id="analystGen"></div>
+  </main>
+  <div class="foot">UnityESS EMS Data Intelligence &middot; read-only &middot; all figures labelled by evidence class</div>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const fmt = n => (n==null?"—":Number(n).toLocaleString("en-IN"));
+const dt = s => s ? new Date(s).toLocaleString("en-IN",{hour12:false}) : "—";
+const LS = {get:k=>{try{return localStorage.getItem(k)}catch(e){return null}},
+            set:(k,v)=>{try{localStorage.setItem(k,v)}catch(e){}},
+            del:k=>{try{localStorage.removeItem(k)}catch(e){}}};
+
+// ── Set this once to your production backend (Cloudflare Tunnel HTTPS URL). When set,
+//    the "Backend URL" field is hidden and the dashboard always talks to this backend.
+//    Leave as-is / empty to be prompted for the URL instead.
+const DEFAULT_BASE = "__PROD_BACKEND_URL__";   // e.g. "https://ems-api.yourdomain.com"
+let TOKEN = LS.get("ems_token") || "";
+let BASE  = LS.get("ems_base") || (/^https?:\/\//.test(DEFAULT_BASE) ? DEFAULT_BASE : "http://localhost:8040");
+let charts = {};
+
+// ---------------- auth + fetch ----------------
+async function api(path){
+  const res = await fetch(BASE.replace(/\/$/,"") + path, {headers:{Authorization:"Bearer "+TOKEN}});
+  if(res.status===401){ logout(); throw new Error("Session expired — sign in again."); }
+  if(!res.ok){ let t=await res.text().catch(()=> ""); throw new Error("API "+res.status+": "+t.slice(0,160)); }
+  return res.json();
+}
+async function login(){
+  $("#loginErr").textContent="";
+  BASE = ($("#baseUrl").value||"http://localhost:8040").trim();
+  LS.set("ems_base", BASE);
+  try{
+    const res = await fetch(BASE.replace(/\/$/,"")+"/api/v1/auth/login",{
+      method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({identifier:$("#identifier").value.trim(),password:$("#password").value})});
+    if(!res.ok){ $("#loginErr").textContent = res.status===401?"Invalid credentials.":"Login failed ("+res.status+")."; return; }
+    const j = await res.json(); TOKEN = j.access_token; LS.set("ems_token",TOKEN);
+    $("#who").textContent = $("#identifier").value.trim();
+    showApp();
+  }catch(e){ $("#loginErr").textContent = "Cannot reach backend at "+BASE+". Check URL / CORS."; }
+}
+function logout(){ TOKEN=""; LS.del("ems_token"); $("#app").classList.add("hidden"); $("#login").classList.remove("hidden"); }
+function showApp(){ $("#login").classList.add("hidden"); $("#app").classList.remove("hidden"); loadAll(); }
+
+// ---------------- rendering helpers ----------------
+function tableHTML(cols, rows){
+  let h="<table><thead><tr>"+cols.map(c=>`<th class="${c.num?'num':''}">${c.label}</th>`).join("")+"</tr></thead><tbody>";
+  for(const r of rows){ h+="<tr>"+cols.map(c=>`<td class="${c.num?'num':''}">${c.render?c.render(r):(r[c.key]??"—")}</td>`).join("")+"</tr>"; }
+  return h+"</tbody></table>";
+}
+function chart(id,cfg){ if(charts[id])charts[id].destroy(); charts[id]=new Chart($("#"+id),cfg); }
+
+// ---------------- MANAGEMENT ----------------
+async function loadMgmt(){
+  $("#mgmtErr").textContent="";
+  let o; try{ o=await api("/api/v1/monitor/overview"); }catch(e){ $("#mgmtErr").textContent=e.message; return; }
+  const t=o.totals||{};
+  const kpis=[
+    {h:"Stored messages",big:fmt(t.stored),cap:"committed to DB",chip:"v"},
+    {h:"Pending messages",big:fmt(t.pending),cap:"awaiting store / retrying",chip:t.pending>0?"n":"v"},
+    {h:"Storage success",big:(t.storage_success_pct==null?"—":t.storage_success_pct+"%"),cap:"stored ÷ (stored+pending)",chip:"d"},
+    {h:"Stuck backlog",big:fmt((o.stuck_pending_by_stream||[]).reduce((a,b)=>a+(b.stuck||0),0)),cap:"lease-expired pending",chip:"d"},
+  ];
+  $("#kpis").innerHTML = kpis.map(k=>`<div class="card kpi"><h3>${k.h} <span class="chip ${k.chip}">${k.chip==='v'?'VERIFIED':k.chip==='d'?'DERIVED':'WATCH'}</span></h3><div class="big">${k.big}</div><div class="cap">${k.cap}</div></div>`).join("");
+
+  // pivot ledger by stream
+  const byStream={};
+  for(const r of (o.ledger_by_stream||[])){ (byStream[r.stream]=byStream[r.stream]||{stream:r.stream,stored:0,pending:0,last_seen:null})[r.status]=r.n;
+    if(r.last_seen) byStream[r.stream].last_seen=r.last_seen; }
+  const stuckMap={}; (o.stuck_pending_by_stream||[]).forEach(s=>stuckMap[s.stream]=s.stuck);
+  const streams=Object.values(byStream).sort((a,b)=>a.stream.localeCompare(b.stream));
+
+  chart("chartLedger",{type:"bar",data:{labels:streams.map(s=>s.stream),
+    datasets:[{label:"Stored",data:streams.map(s=>s.stored||0),backgroundColor:"#016297"},
+              {label:"Pending",data:streams.map(s=>s.pending||0),backgroundColor:"#E0A500"}]},
+    options:{responsive:true,scales:{x:{stacked:false},y:{beginAtZero:true}},plugins:{legend:{position:"bottom"}}}});
+
+  $("#healthTable").innerHTML=tableHTML(
+    [{label:"Stream",key:"stream"},{label:"Stored",num:1,render:r=>fmt(r.stored)},
+     {label:"Pending",num:1,render:r=>fmt(r.pending)},{label:"Stuck",num:1,render:r=>fmt(stuckMap[r.stream]||0)},
+     {label:"Last seen (UTC)",render:r=>dt(r.last_seen)},
+     {label:"Status",render:r=>{const p=r.pending||0,st=stuckMap[r.stream]||0;
+       const cls=st>0?"bad":(p>0?"warn":"ok"),txt=st>0?"backlog":(p>0?"catching up":"healthy");
+       return `<span class="pill ${cls}">${txt}</span>`;}}],
+    streams);
+
+  $("#buckets").innerHTML=tableHTML([{label:"Bucket",key:"name"},{label:"Retention class",key:"class"}],o.retention_buckets||[]);
+  $("#mgmtNotes").innerHTML=(o.notes||[]).map(n=>`<li>${n}</li>`).join("") +
+     (streams.some(s=>(stuckMap[s.stream]||0)>0)?`<li><b>Action:</b> a stream has stuck backlog — confirm the gateway is sending and resending.</li>`:"");
+  $("#mgmtGen").textContent="Scope: "+o.scope+" · generated "+dt(o.generated_at)+" · evidence: "+o.evidence;
+}
+
+// ---------------- ANALYST ----------------
+async function loadAnalyst(){
+  $("#analystErr").textContent="";
+  const win=$("#window").value;
+  try{
+    const s2=await api("/api/v1/monitor/s2?window="+win);
+    const m=(s2.measurements||[]).sort((a,b)=>b.points-a.points);
+    chart("chartS2",{type:"bar",data:{labels:m.map(x=>x.measurement.replace(/^s2_/,"")),
+      datasets:[{label:"points ("+win+")",data:m.map(x=>x.points),backgroundColor:"#016297"}]},
+      options:{indexAxis:"y",responsive:true,plugins:{legend:{display:false}},scales:{x:{beginAtZero:true}}}});
+    if(s2.evidence==="INCONCLUSIVE") $("#analystErr").textContent="S2 counts unavailable: "+(s2.notes||[]).join(" ");
+  }catch(e){ $("#analystErr").textContent=e.message; }
+
+  try{
+    const inv=await api("/api/v1/monitor/streams");
+    $("#streamTable").innerHTML=tableHTML(
+      [{label:"Stream",key:"stream"},{label:"Table",key:"table"},{label:"Rows",num:1,render:r=>fmt(r.rows)},
+       {label:"First event",render:r=>dt(r.first_event)},{label:"Last event",render:r=>dt(r.last_event)},
+       {label:"Last stored",render:r=>dt(r.last_stored)}],(inv.tables||[]));
+  }catch(e){ $("#analystErr").textContent=e.message; }
+
+  try{
+    const f=await api("/api/v1/monitor/failures");
+    $("#failTable").innerHTML=tableHTML([{label:"Stream",key:"stream"},{label:"Stuck pending",num:1,render:r=>fmt(r.stuck)}],
+      (f.stuck_pending_by_stream||[]));
+    if(!(f.stuck_pending_by_stream||[]).length) $("#failTable").innerHTML='<div class="muted">No stuck pending messages.</div>';
+  }catch(e){}
+  await loadFreq();
+  $("#analystGen").textContent="Window: "+win+" · generated "+dt(new Date().toISOString());
+}
+async function loadFreq(){
+  const win=$("#window").value, sub=$("#freqSub").value;
+  try{
+    const fr=await api("/api/v1/monitor/frequency?substream="+sub+"&window="+win);
+    $("#freqTable").innerHTML=tableHTML(
+      [{label:"Signal (field)",key:"field"},{label:"Qual.",render:r=>r.is_quality?"_q":""},
+       {label:"Points",num:1,render:r=>fmt(r.points)},
+       {label:"Observed interval (s)",num:1,render:r=>r.observed_interval_s??"—"},
+       {label:"Expected cadence (s)",num:1,render:r=>Array.isArray(r.expected_cadence_s)?r.expected_cadence_s.join("–"):(r.expected_cadence_s??"—")}],
+      (fr.signals||[]).slice(0,60));
+    if(!(fr.signals||[]).length) $("#freqTable").innerHTML='<div class="muted">No points for '+sub+' in this window.</div>';
+  }catch(e){ $("#freqTable").innerHTML='<div class="err">'+e.message+'</div>'; }
+}
+
+// ---------------- wiring ----------------
+function loadAll(){ loadMgmt(); loadAnalyst(); }
+document.querySelectorAll("nav .tab").forEach(t=>t.onclick=()=>{
+  document.querySelectorAll("nav .tab").forEach(x=>x.classList.remove("active")); t.classList.add("active");
+  $("#view-mgmt").classList.toggle("hidden",t.dataset.view!=="mgmt");
+  $("#view-analyst").classList.toggle("hidden",t.dataset.view!=="analyst");
+});
+$("#loginBtn").onclick=login;
+$("#password").addEventListener("keydown",e=>{if(e.key==="Enter")login();});
+$("#logoutBtn").onclick=logout;
+$("#refreshBtn").onclick=loadAll;
+$("#window").onchange=loadAnalyst;
+$("#freqSub").onchange=loadFreq;
+
+// boot
+$("#baseUrl").value=BASE;
+if(/^https?:\/\//.test(DEFAULT_BASE)){        // backend baked in -> lock to it, hide the field
+  BASE = DEFAULT_BASE; LS.set("ems_base", BASE); $("#baseUrl").value = BASE;
+  const row = $("#baseUrlRow"); if(row) row.classList.add("hidden");
+}
+if(TOKEN){ showApp(); } else { $("#login").classList.remove("hidden"); }
+</script>
+</body>
+</html>
