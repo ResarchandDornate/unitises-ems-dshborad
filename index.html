@@ -179,7 +179,7 @@ const LS = {get:k=>{try{return localStorage.getItem(k)}catch(e){return null}},
 // ── Set this once to your production backend (Cloudflare Tunnel HTTPS URL). When set,
 //    the "Backend URL" field is hidden and the dashboard always talks to this backend.
 //    Leave as-is / empty to be prompted for the URL instead.
-const DEFAULT_BASE = "__PROD_BACKEND_URL__";   // e.g. "https://ems-api.yourdomain.com"
+const DEFAULT_BASE = "https://ems-gateway-api.unityess.cloud";   // production backend (Cloudflare Tunnel)
 let TOKEN = LS.get("ems_token") || "";
 let BASE  = LS.get("ems_base") || (/^https?:\/\//.test(DEFAULT_BASE) ? DEFAULT_BASE : "http://localhost:8040");
 let charts = {};
