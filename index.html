@@ -23,6 +23,12 @@
   header button{background:rgba(255,255,255,.14);color:#fff;border:1px solid rgba(255,255,255,.35);
     border-radius:6px;padding:6px 12px;cursor:pointer;font-family:inherit}
   header button:hover{background:rgba(255,255,255,.25)}
+  header .gwbadge{display:flex;align-items:center;gap:6px;font-size:12px;background:rgba(255,255,255,.14);
+    border:1px solid rgba(255,255,255,.3);border-radius:14px;padding:3px 10px;white-space:nowrap}
+  header .gwbadge .dot{width:9px;height:9px;border-radius:50%;background:#9aa;display:inline-block}
+  header .gwbadge.ok .dot{background:#38c172;box-shadow:0 0 6px #38c172}
+  header .gwbadge.warn .dot{background:#E0A500}
+  header .gwbadge.bad .dot{background:#e3342f;box-shadow:0 0 6px #e3342f}
   nav{display:flex;gap:4px;background:var(--white);border-bottom:1px solid var(--line);padding:0 16px}
   nav .tab{padding:12px 18px;cursor:pointer;border-bottom:3px solid transparent;font-weight:600;color:var(--muted)}
   nav .tab.active{color:var(--blue);border-bottom-color:var(--blue)}
@@ -94,6 +100,7 @@
       <div class="sub">Gateway → Backend delivery, storage, frequency &amp; gaps</div>
     </div>
     <div class="spacer"></div>
+    <div class="gwbadge" id="gwBadge" title="Freshest data the backend has received from the gateway"><span class="dot"></span><span id="gwText">gateway: …</span></div>
     <div class="who" id="who"></div>
     <button id="refreshBtn">Refresh</button>
     <button id="logoutBtn">Sign out</button>
@@ -101,6 +108,8 @@
   <nav>
     <div class="tab active" data-view="mgmt">Management</div>
     <div class="tab" data-view="analyst">Data Analyst</div>
+    <div class="tab" data-view="live">Live Data</div>
+    <div class="tab" data-view="backlog">Backlog</div>
     <div class="spacer"></div>
     <div class="winwrap">
       <span class="muted">Window</span>
@@ -160,10 +169,58 @@
     <div class="card"><div id="streamTable"></div>
       <div class="notes">One message can produce many records (e.g. S1 ≈ 4 rec/msg, S10 ≈ 22 rec/msg) — record rows will exceed ledger message counts.</div></div>
 
-    <div class="section-title">Stuck / failed ingestion <span class="chip d">DERIVED</span> <span class="chip n">codes NOT INSTRUMENTED</span></div>
+    <div class="section-title">Backlog by stream — with receive timestamps <span class="chip v">VERIFIED</span> <span class="chip d">stuck DERIVED</span></div>
     <div class="card"><div id="failTable"></div>
       <div class="notes">Stuck = lease-expired pending messages. It clears as the gateway resends and is not confirmed data loss. Per-failure error codes live only in ephemeral container logs.</div></div>
     <div class="gen" id="analystGen"></div>
+  </main>
+  <!-- LIVE DATA -->
+  <main id="view-live" class="hidden">
+    <div id="liveErr" class="err"></div>
+    <div class="card" style="margin-bottom:16px">
+      <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap">
+        <div><span class="muted">Substream</span>
+          <select id="liveSub">
+            <option>pcs_extended</option><option>bms_extended</option><option>ems_system</option>
+            <option>remote_control</option><option>liquid_cooling</option><option>io_module</option>
+            <option>dehumidifier</option><option>fire_protection</option>
+          </select></div>
+        <label style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="liveAuto" checked> auto-refresh</label>
+        <select id="liveInt"><option value="5000" selected>every 5s</option><option value="10000">every 10s</option><option value="30000">every 30s</option></select>
+        <button id="liveNow" style="background:var(--blue);color:#fff;border:0;border-radius:6px;padding:7px 12px;cursor:pointer;font-family:inherit">Refresh now</button>
+        <span style="flex:1"></span>
+        <span class="gen" id="liveStatus"></span>
+      </div>
+    </div>
+    <div class="banner">Live view — values are fetched fresh on every refresh and <b>not stored anywhere</b>. Timestamps are the gateway's event-time. Energy counters are excluded from this view.</div>
+    <div class="card"><h3>Latest value per signal <span class="chip v">VERIFIED</span></h3><div id="liveTable"></div></div>
+    <div class="card" style="margin-top:16px"><h3>Backlog by stream — with receive timestamps <span class="chip v">VERIFIED</span></h3><div id="liveBacklog"></div></div>
+  </main>
+  <!-- BACKLOG -->
+  <main id="view-backlog" class="hidden">
+    <div id="blErr" class="err"></div>
+    <div class="card" style="margin-bottom:16px;display:flex;gap:14px;align-items:center;flex-wrap:wrap">
+      <label style="display:flex;align-items:center;gap:6px"><input type="checkbox" id="blAuto" checked> auto-refresh (10s)</label>
+      <button id="blReset" style="background:#eef2f5;border:1px solid var(--line);border-radius:6px;padding:7px 12px;cursor:pointer;font-family:inherit">Reset recovered baseline</button>
+      <span style="flex:1"></span><span class="gen" id="blStatus"></span>
+    </div>
+    <div class="row kpis" id="blKpis"></div>
+    <div class="card" style="margin-bottom:16px"><h3>Backlog drain progress <span class="chip d">DERIVED</span></h3><div id="blProgress"></div></div>
+    <div class="card"><h3>Backlog by stream — remaining, recovered &amp; timestamps <span class="chip v">VERIFIED</span></h3><div id="blTable"></div></div>
+    <div class="card" style="margin-top:16px">
+      <h3>Backlog messages — id, size, stream &amp; time <span class="chip v">VERIFIED</span>
+        <span style="font-weight:400;font-size:12px;margin-left:8px">
+          <select id="blItemsOrder"><option value="newest">newest first</option><option value="oldest">oldest first</option></select>
+          <select id="blItemsLimit"><option>50</option><option selected>100</option><option>200</option><option>500</option></select>
+        </span></h3>
+      <div id="blItems"></div>
+      <div class="notes">"Size" = record count (records in the message). Byte size isn't stored by the backend.</div>
+    </div>
+    <div class="card" style="margin-top:16px">
+      <h3>Recent messages (all streams) — stream, substream &amp; status <span class="chip v">VERIFIED</span></h3>
+      <div id="blRecent"></div>
+      <div class="notes">Live feed of the latest ingested messages. New messages show their substream; rows from before the substream column was added show "(unknown)".</div>
+    </div>
   </main>
   <div class="foot">UnityESS EMS Data Intelligence &middot; read-only &middot; all figures labelled by evidence class</div>
 </div>
@@ -205,8 +262,25 @@ async function login(){
     showApp();
   }catch(e){ $("#loginErr").textContent = "Cannot reach backend at "+BASE+". Check URL / CORS."; }
 }
-function logout(){ TOKEN=""; LS.del("ems_token"); $("#app").classList.add("hidden"); $("#login").classList.remove("hidden"); }
-function showApp(){ $("#login").classList.add("hidden"); $("#app").classList.remove("hidden"); loadAll(); }
+function logout(){ try{liveStop();backlogStop();gwStop();}catch(e){} TOKEN=""; LS.del("ems_token"); $("#app").classList.add("hidden"); $("#login").classList.remove("hidden"); }
+function showApp(){ $("#login").classList.add("hidden"); $("#app").classList.remove("hidden"); loadAll(); gwStart(); }
+let gwTimer=null;
+function gwStart(){ gwStop(); updateGatewayBadge(); gwTimer=setInterval(updateGatewayBadge, 15000); }
+function gwStop(){ if(gwTimer){ clearInterval(gwTimer); gwTimer=null; } }
+async function updateGatewayBadge(){
+  const b=$("#gwBadge"), t=$("#gwText"); if(!b||!TOKEN) return;
+  try{
+    const o=await api("/api/v1/monitor/overview");
+    let latest=null;
+    for(const r of (o.ledger_by_stream||[])){ if(r.last_seen){ const d=new Date(r.last_seen); if(!latest||d>latest) latest=d; } }
+    if(!latest){ b.className="gwbadge warn"; t.textContent="Gateway: no data yet"; return; }
+    const sec=Math.max(0,Math.round((Date.now()-latest.getTime())/1000));
+    const ago = sec<90?sec+"s":(sec<5400?Math.round(sec/60)+"m":Math.round(sec/3600)+"h");
+    if(sec<=120){ b.className="gwbadge ok"; t.textContent="Gateway online · "+ago+" ago"; }
+    else if(sec<=600){ b.className="gwbadge warn"; t.textContent="Gateway stale · "+ago+" ago"; }
+    else { b.className="gwbadge bad"; t.textContent="Gateway OFFLINE · "+ago+" ago"; }
+  }catch(e){ b.className="gwbadge warn"; t.textContent="Gateway: ?"; }
+}
 
 // ---------------- rendering helpers ----------------
 function tableHTML(cols, rows){
@@ -277,12 +351,7 @@ async function loadAnalyst(){
        {label:"Last stored",render:r=>dt(r.last_stored)}],(inv.tables||[]));
   }catch(e){ $("#analystErr").textContent=e.message; }
 
-  try{
-    const f=await api("/api/v1/monitor/failures");
-    $("#failTable").innerHTML=tableHTML([{label:"Stream",key:"stream"},{label:"Stuck pending",num:1,render:r=>fmt(r.stuck)}],
-      (f.stuck_pending_by_stream||[]));
-    if(!(f.stuck_pending_by_stream||[]).length) $("#failTable").innerHTML='<div class="muted">No stuck pending messages.</div>';
-  }catch(e){}
+  await loadBacklog("#failTable");
   await loadFreq();
   $("#analystGen").textContent="Window: "+win+" · generated "+dt(new Date().toISOString());
 }
@@ -300,13 +369,142 @@ async function loadFreq(){
   }catch(e){ $("#freqTable").innerHTML='<div class="err">'+e.message+'</div>'; }
 }
 
+// ---------------- BACKLOG (which stream is backlogged, with receive timestamps) ----------------
+async function loadBacklog(targetId){
+  try{
+    const f=await api("/api/v1/monitor/failures");
+    const rows=f.backlog_by_stream||[];
+    $(targetId).innerHTML = rows.length ? tableHTML(
+      [{label:"Stream",key:"stream"},
+       {label:"Pending",num:1,render:r=>fmt(r.pending)},
+       {label:"Stuck",num:1,render:r=>r.stuck>0?`<span class="pill bad">${fmt(r.stuck)}</span>`:fmt(r.stuck)},
+       {label:"First received (UTC)",render:r=>dt(r.first_pending)},
+       {label:"Last received (UTC)",render:r=>dt(r.last_pending)}],
+      rows) : '<div class="muted">No backlog — all received messages are stored.</div>';
+  }catch(e){ $(targetId).innerHTML='<div class="err">'+e.message+'</div>'; }
+}
+
+// ---------------- BACKLOG TAB (all streams: remaining vs recovered) ----------------
+let backlogBaseline=null, backlogTimer=null;
+async function loadBacklogTab(){
+  $("#blErr").textContent="";
+  try{
+    const f=await api("/api/v1/monitor/failures");
+    const rows=f.backlog_by_stream||[];
+    const curr={}; let totPending=0, totStuck=0;
+    rows.forEach(r=>{ curr[r.stream]=r.pending||0; totPending+=r.pending||0; totStuck+=r.stuck||0; });
+    if(backlogBaseline===null) backlogBaseline=Object.assign({__total:totPending}, curr);
+    const baseTotal=backlogBaseline.__total||0;
+    const recovered=Math.max(0, baseTotal-totPending);
+    const pct=baseTotal>0?Math.round(100*recovered/baseTotal):(totPending===0?100:0);
+    $("#blKpis").innerHTML=[
+      {h:"Remaining backlog",big:fmt(totPending),cap:"pending now, all streams",c:"v"},
+      {h:"Stuck",big:fmt(totStuck),cap:"lease-expired pending",c:"d"},
+      {h:"Recovered (this session)",big:fmt(recovered),cap:"drained since baseline",c:"d"},
+      {h:"Streams affected",big:fmt(rows.length),cap:"with pending messages",c:"v"},
+    ].map(k=>`<div class="card kpi"><h3>${k.h} <span class="chip ${k.c}">${k.c==='v'?'VERIFIED':'DERIVED'}</span></h3><div class="big">${k.big}</div><div class="cap">${k.cap}</div></div>`).join("");
+    $("#blProgress").innerHTML=`<div style="background:var(--light);border-radius:8px;height:22px;overflow:hidden">
+      <div style="width:${pct}%;background:var(--blue);height:100%;transition:width .4s"></div></div>
+      <div class="notes">${fmt(recovered)} recovered / ${fmt(baseTotal)} baseline (${pct}%) &middot; ${fmt(totPending)} remaining. Baseline = backlog when this tab first opened this session; use Reset to re-baseline.</div>`;
+    const trows=rows.map(r=>({...r, recovered:Math.max(0,(backlogBaseline[r.stream]||0)-(r.pending||0))}));
+    $("#blTable").innerHTML = rows.length ? tableHTML(
+      [{label:"Stream",key:"stream"},
+       {label:"Remaining",num:1,render:r=>fmt(r.pending)},
+       {label:"Stuck",num:1,render:r=>r.stuck>0?`<span class="pill bad">${fmt(r.stuck)}</span>`:fmt(r.stuck)},
+       {label:"Recovered (session)",num:1,render:r=>fmt(r.recovered)},
+       {label:"First received (UTC)",render:r=>dt(r.first_pending)},
+       {label:"Last received (UTC)",render:r=>dt(r.last_pending)}],
+      trows) : '<div class="muted">No backlog — every received message is stored.</div>';
+    $("#blStatus").textContent="updated "+new Date().toLocaleTimeString("en-IN",{hour12:false})+" · not stored";
+    loadBacklogItems();
+    loadRecentMessages();
+  }catch(e){ $("#blErr").textContent=e.message; backlogStop(); }
+}
+async function loadBacklogItems(){
+  try{
+    const order=$("#blItemsOrder").value, lim=$("#blItemsLimit").value;
+    const d=await api("/api/v1/monitor/backlog-items?order="+order+"&limit="+lim);
+    const now=Date.now();
+    const rows=(d.items||[]).map(it=>{
+      const t=it.created_at?new Date(it.created_at).getTime():null;
+      return {mid:it.message_id, stream:it.stream, substream:it.substream, size:it.record_count,
+              recv:it.created_at, age:(t?Math.round((now-t)/1000):null)};
+    });
+    $("#blItems").innerHTML = rows.length ? tableHTML(
+      [{label:"Message ID",render:r=>`<span style="font-family:monospace;font-size:12px">${r.mid}</span>`},
+       {label:"Stream",key:"stream"},
+       {label:"Substream",render:r=>r.substream?r.substream:'<span class="muted">(unknown)</span>'},
+       {label:"Size (records)",num:1,render:r=>fmt(r.size)},
+       {label:"Received (UTC)",render:r=>dt(r.recv)},
+       {label:"Age",num:1,render:r=>r.age==null?"—":(r.age>3600?Math.round(r.age/3600)+"h":fmt(r.age)+"s")}],
+      rows) + `<div class="notes">showing ${rows.length} of ${fmt(d.count>=rows.length?rows.length:d.count)} (limit ${d.limit}, ${d.order})</div>`
+      : '<div class="muted">No backlog messages.</div>';
+  }catch(e){ $("#blItems").innerHTML='<div class="err">'+e.message+'</div>'; }
+}
+async function loadRecentMessages(){
+  try{
+    const d=await api("/api/v1/monitor/recent-messages?limit=50");
+    const rows=(d.items||[]).map(it=>({mid:it.message_id, stream:it.stream, substream:it.substream,
+      status:it.status, size:it.record_count, recv:it.created_at}));
+    $("#blRecent").innerHTML = rows.length ? tableHTML(
+      [{label:"Message ID",render:r=>`<span style="font-family:monospace;font-size:12px">${r.mid}</span>`},
+       {label:"Stream",key:"stream"},
+       {label:"Substream",render:r=>r.substream?r.substream:'<span class="muted">(unknown)</span>'},
+       {label:"Status",render:r=>r.status==='stored'?'<span class="pill ok">stored</span>':`<span class="pill warn">${r.status}</span>`},
+       {label:"Size",num:1,render:r=>fmt(r.size)},
+       {label:"Received (UTC)",render:r=>dt(r.recv)}],
+      rows) : '<div class="muted">No recent messages.</div>';
+  }catch(e){ $("#blRecent").innerHTML='<div class="err">'+e.message+'</div>'; }
+}
+function backlogStart(){ backlogStop(); if($("#blAuto").checked) backlogTimer=setInterval(loadBacklogTab,10000); }
+function backlogStop(){ if(backlogTimer){ clearInterval(backlogTimer); backlogTimer=null; } }
+
+// ---------------- LIVE DATA (polled, never stored) ----------------
+let liveTimer=null;
+async function loadLive(){
+  $("#liveErr").textContent="";
+  const sub=$("#liveSub").value;
+  try{
+    const d=await api("/api/v1/monitor/live?substream="+sub);
+    const now=Date.now();
+    const rows=(d.signals||[]).map(s=>{
+      const t=s.time?new Date(s.time).getTime():null;
+      return {field:s.field, value:s.value, time:s.time, age:(t?Math.round((now-t)/1000):null)};
+    });
+    $("#liveTable").innerHTML=tableHTML(
+      [{label:"Signal",key:"field"},
+       {label:"Value",num:1,render:r=>r.value==null?"—":r.value},
+       {label:"Event time (UTC)",render:r=>dt(r.time)},
+       {label:"Age (s)",num:1,render:r=>r.age==null?"—":(r.age>120?`<span class="pill warn">${fmt(r.age)}</span>`:fmt(r.age))}],
+      rows);
+    if(!rows.length) $("#liveTable").innerHTML='<div class="muted">No live signals for '+sub+' right now (the gateway may be idle).</div>';
+    $("#liveStatus").textContent="updated "+new Date().toLocaleTimeString("en-IN",{hour12:false})+" · "+rows.length+" signals · not stored";
+    loadBacklog("#liveBacklog");
+  }catch(e){ $("#liveErr").textContent=e.message; liveStop(); }
+}
+function liveStart(){ liveStop(); if($("#liveAuto").checked){ liveTimer=setInterval(loadLive, parseInt($("#liveInt").value,10)); } }
+function liveStop(){ if(liveTimer){ clearInterval(liveTimer); liveTimer=null; } }
+
 // ---------------- wiring ----------------
 function loadAll(){ loadMgmt(); loadAnalyst(); }
 document.querySelectorAll("nav .tab").forEach(t=>t.onclick=()=>{
   document.querySelectorAll("nav .tab").forEach(x=>x.classList.remove("active")); t.classList.add("active");
-  $("#view-mgmt").classList.toggle("hidden",t.dataset.view!=="mgmt");
-  $("#view-analyst").classList.toggle("hidden",t.dataset.view!=="analyst");
+  const v=t.dataset.view;
+  $("#view-mgmt").classList.toggle("hidden",v!=="mgmt");
+  $("#view-analyst").classList.toggle("hidden",v!=="analyst");
+  $("#view-live").classList.toggle("hidden",v!=="live");
+  $("#view-backlog").classList.toggle("hidden",v!=="backlog");
+  if(v==="live"){ loadLive(); liveStart(); } else { liveStop(); }
+  if(v==="backlog"){ loadBacklogTab(); backlogStart(); } else { backlogStop(); }
 });
+$("#blAuto").onchange=backlogStart;
+$("#blReset").onclick=()=>{ backlogBaseline=null; loadBacklogTab(); };
+$("#blItemsOrder").onchange=loadBacklogItems;
+$("#blItemsLimit").onchange=loadBacklogItems;
+$("#liveSub").onchange=loadLive;
+$("#liveInt").onchange=liveStart;
+$("#liveAuto").onchange=liveStart;
+$("#liveNow").onclick=loadLive;
 $("#loginBtn").onclick=login;
 $("#password").addEventListener("keydown",e=>{if(e.key==="Enter")login();});
 $("#logoutBtn").onclick=logout;
