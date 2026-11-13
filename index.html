@@ -115,7 +115,7 @@
     <div class="spacer"></div>
     <div class="winwrap">
       <span class="muted">Gateway</span>
-      <select id="gwSel" title="Pick a gateway to view its profile and latest data. Pipeline-health panels remain all-gateways."><option value="">All gateways</option></select>
+      <select id="gwSel" title="Filters every page by this gateway (Stream inventory stays all-gateways)."><option value="">All gateways</option></select>
     </div>
     <div class="winwrap">
       <span class="muted">Window</span>
@@ -263,6 +263,8 @@ let charts = {};
 
 // ---------------- auth + fetch ----------------
 async function api(path){
+  // global gateway filter: scope every /monitor/* call to the selected gateway (if any)
+  if(path.startsWith("/api/v1/monitor/")){ const _g=$("#gwSel")?$("#gwSel").value:""; if(_g) path += (path.includes("?")?"&":"?")+"gateway_id="+encodeURIComponent(_g); }
   const res = await fetch(BASE.replace(/\/$/,"") + path, {headers:{Authorization:"Bearer "+TOKEN}});
   if(res.status===401){ logout(); throw new Error("Session expired — sign in again."); }
   if(!res.ok){ let t=await res.text().catch(()=> ""); throw new Error("API "+res.status+": "+t.slice(0,160)); }
@@ -644,7 +646,9 @@ $("#logoutBtn").onclick=logout;
 $("#refreshBtn").onclick=loadAll;
 $("#window").onchange=loadAnalyst;
 $("#freqSub").onchange=loadFreq;
-$("#gwSel").onchange=()=>{ const id=$("#gwSel").value; updateGwBadge(); if(id){ document.querySelector('nav .tab[data-view="gateways"]').click(); openGateway(id); } };
+$("#gwSel").onchange=()=>{ const id=$("#gwSel").value; updateGwBadge();
+  if(activeView()==="gateways"){ if(id) openGateway(id); else loadGatewaysPage(); }
+  else refreshActive(); };
 
 // boot
 $("#baseUrl").value=BASE;
