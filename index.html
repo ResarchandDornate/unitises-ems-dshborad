@@ -101,6 +101,7 @@
     </div>
     <div class="spacer"></div>
     <div class="gwbadge" id="gwBadge" title="Freshest data the backend has received from the gateway"><span class="dot"></span><span id="gwText">gateway: …</span></div>
+    <div class="gwbadge" id="siteGwBadge" title="Registered gateways for the selected site. 'seen <15m' uses last_seen_at = last successful token issuance — not a live-telemetry guarantee."><span class="dot"></span><span id="siteGwText">gateways: …</span></div>
     <div class="who" id="who"></div>
     <button id="refreshBtn">Refresh</button>
     <button id="logoutBtn">Sign out</button>
@@ -110,7 +111,12 @@
     <div class="tab" data-view="analyst">Data Analyst</div>
     <div class="tab" data-view="live">Live Data</div>
     <div class="tab" data-view="backlog">Backlog</div>
+    <div class="tab" data-view="sites">Sites</div>
     <div class="spacer"></div>
+    <div class="winwrap">
+      <span class="muted">Site</span>
+      <select id="siteSel" title="Filters the gateways badge. Pipeline-health panels remain all-sites."><option value="">All sites</option></select>
+    </div>
     <div class="winwrap">
       <span class="muted">Window</span>
       <select id="window">
@@ -222,6 +228,20 @@
       <div class="notes">Live feed of the latest ingested messages. New messages show their substream; rows from before the substream column was added show "(unknown)".</div>
     </div>
   </main>
+  <!-- SITES -->
+  <main id="view-sites" class="hidden">
+    <div id="sitesErr" class="err"></div>
+    <div class="section-title">Sites
+      <span class="muted" style="font-size:13px;font-weight:400">— click a row to see that site's gateways and latest data per stream</span></div>
+    <div class="card"><div id="sitesTable"><div class="muted">loading…</div></div></div>
+    <div id="siteDetail" class="hidden">
+      <div class="section-title" id="siteDetailTitle" style="margin-top:22px"></div>
+      <div class="card"><h3>Gateways <span class="chip v">VERIFIED</span></h3><div id="siteGwTable"></div>
+        <div class="notes">"Last seen (token)" = last successful token issuance — not a live-telemetry guarantee.</div></div>
+      <div id="siteStreams"></div>
+      <div class="notes">Latest snapshot per stream, pulled live via the per-site data APIs (not stored). S2 high-frequency signals are in the Live / Data Analyst tabs.</div>
+    </div>
+  </main>
   <div class="foot">UnityESS EMS Data Intelligence &middot; read-only &middot; all figures labelled by evidence class</div>
 </div>
 
@@ -262,10 +282,10 @@ async function login(){
     showApp();
   }catch(e){ $("#loginErr").textContent = "Cannot reach backend at "+BASE+". Check URL / CORS."; }
 }
-function logout(){ try{liveStop();backlogStop();gwStop();}catch(e){} TOKEN=""; LS.del("ems_token"); $("#app").classList.add("hidden"); $("#login").classList.remove("hidden"); }
-function showApp(){ $("#login").classList.add("hidden"); $("#app").classList.remove("hidden"); loadAll(); gwStart(); }
+function logout(){ try{liveStop();backlogStop();gwStop();masterStop();}catch(e){} TOKEN=""; LS.del("ems_token"); $("#app").classList.add("hidden"); $("#login").classList.remove("hidden"); }
+function showApp(){ $("#login").classList.add("hidden"); $("#app").classList.remove("hidden"); loadAll(); loadSites(); gwStart(); masterStart(); }
 let gwTimer=null;
-function gwStart(){ gwStop(); updateGatewayBadge(); gwTimer=setInterval(updateGatewayBadge, 15000); }
+function gwStart(){ gwStop(); updateGatewayBadge(); updateSiteGateways(); gwTimer=setInterval(()=>{updateGatewayBadge();updateSiteGateways();}, 15000); }
 function gwStop(){ if(gwTimer){ clearInterval(gwTimer); gwTimer=null; } }
 async function updateGatewayBadge(){
   const b=$("#gwBadge"), t=$("#gwText"); if(!b||!TOKEN) return;
@@ -280,6 +300,108 @@ async function updateGatewayBadge(){
     else if(sec<=600){ b.className="gwbadge warn"; t.textContent="Gateway stale · "+ago+" ago"; }
     else { b.className="gwbadge bad"; t.textContent="Gateway OFFLINE · "+ago+" ago"; }
   }catch(e){ b.className="gwbadge warn"; t.textContent="Gateway: ?"; }
+}
+
+// ---------------- sites + gateways registry (admin endpoints) ----------------
+let SITES=[]; let siteAdminDenied=false;
+async function loadSites(){
+  const sel=$("#siteSel"); if(!sel||!TOKEN) return;
+  try{
+    const orgs=await api("/api/v1/admin/organizations");
+    SITES=[]; siteAdminDenied=false;
+    (orgs||[]).forEach(o=>(o.sites||[]).forEach(s=>SITES.push({id:s.id,name:s.name,site_key:s.site_key,org:o.name})));
+    SITES.sort((a,b)=>a.name.localeCompare(b.name));
+    const cur=sel.value;
+    sel.innerHTML='<option value="">All sites ('+SITES.length+')</option>'+
+      SITES.map(s=>`<option value="${s.id}">${s.name}</option>`).join("");
+    if(cur) sel.value=cur;
+  }catch(e){
+    siteAdminDenied = /API 403/.test(e.message||"");
+    sel.innerHTML='<option value="">All sites</option>';
+  }
+  updateSiteGateways();
+}
+async function updateSiteGateways(){
+  const b=$("#siteGwBadge"), t=$("#siteGwText"); if(!b||!t||!TOKEN) return;
+  if(siteAdminDenied){ b.className="gwbadge warn"; t.textContent="gateways: admin role needed"; return; }
+  const sel=$("#siteSel"); const sid=sel?sel.value:"";
+  const targets = sid ? [sid] : SITES.map(s=>s.id);
+  if(!targets.length){ b.className="gwbadge"; t.textContent="gateways: —"; return; }
+  try{
+    let total=0, enabled=0, live=0; const now=Date.now();
+    const lists=await Promise.all(targets.map(id=>api("/api/v1/admin/sites/"+id+"/gateways").catch(()=>[])));
+    lists.forEach(gws=>(gws||[]).forEach(g=>{ total++; if(g.enabled) enabled++;
+      if(g.last_seen_at && (now-new Date(g.last_seen_at).getTime())<=900000) live++; }));
+    const cls = total===0?"warn":(live>0?"ok":(enabled>0?"warn":"bad"));
+    b.className="gwbadge "+cls;
+    t.textContent=`gateways: ${enabled}/${total} enabled · ${live} seen <15m`+(sid?"":` · ${SITES.length} sites`);
+  }catch(e){ b.className="gwbadge warn"; t.textContent="gateways: ?"; }
+}
+
+// ---------------- SITES page (clickable table -> per-site data) ----------------
+let currentSiteId=null, siteGatewayCounts={};
+const SITE_STREAMS=[
+  {key:"S1 · fast BESS (latest)",      path:"/api/v1/bess/fast/latest"},
+  {key:"S3 · gateway health (latest)", path:"/api/v1/health/latest"},
+  {key:"S4 · alarms (summary)",        path:"/api/v1/alarms/summary", summary:true},
+  {key:"S5 · controller (latest)",     path:"/api/v1/controller/latest"},
+  {key:"S6 · solis (latest)",          path:"/api/v1/solis/latest"},
+  {key:"S7 · edge-ai (latest)",        path:"/api/v1/edge-ai/latest"},
+];
+function kvTable(o){
+  if(!o||typeof o!=="object") return '<div class="muted">—</div>';
+  const keys=Object.keys(o); if(!keys.length) return '<div class="muted">—</div>';
+  return '<table>'+keys.map(k=>`<tr><th style="width:42%">${k}</th><td>${o[k]==null?"—":(typeof o[k]==="object"?JSON.stringify(o[k]):o[k])}</td></tr>`).join("")+'</table>';
+}
+async function loadSitesPage(){
+  $("#sitesErr").textContent="";
+  if(!SITES.length && !siteAdminDenied) await loadSites();
+  if(siteAdminDenied){ $("#sitesTable").innerHTML='<div class="banner">This view needs an admin role (<b>org:manage</b> / <b>site:manage</b>) on your sign-in. Ask an admin to grant it, or sign in with an admin account.</div>'; return; }
+  if(!SITES.length){ $("#sitesTable").innerHTML='<div class="muted">No sites found.</div>'; return; }
+  const now=Date.now();
+  await Promise.all(SITES.map(async s=>{
+    try{ const gws=await api("/api/v1/admin/sites/"+s.id+"/gateways");
+      let total=0,en=0,live=0;(gws||[]).forEach(g=>{total++; if(g.enabled)en++;
+        if(g.last_seen_at&&(now-new Date(g.last_seen_at).getTime())<=900000)live++;});
+      siteGatewayCounts[s.id]={total,en,live};
+    }catch(e){ siteGatewayCounts[s.id]={total:"?",en:"?",live:0}; }
+  }));
+  $("#sitesTable").innerHTML=tableHTML(
+    [{label:"Site",render:s=>`<b>${s.name}</b>`},
+     {label:"Org",key:"org"},
+     {label:"Site key",render:s=>`<span style="font-family:monospace;font-size:12px">${s.site_key}</span>`},
+     {label:"Enabled/total",num:1,render:s=>{const c=siteGatewayCounts[s.id]||{};return `${c.en??"–"}/${c.total??"–"}`;}},
+     {label:"Seen <15m",num:1,render:s=>{const c=siteGatewayCounts[s.id]||{};const l=c.live||0;return l>0?`<span class="pill ok">${l}</span>`:`<span class="pill warn">0</span>`;}},
+     {label:"",render:s=>`<span class="pill" style="background:var(--light);color:var(--blue)">View data →</span>`}],
+    SITES);
+  $("#sitesTable").querySelectorAll("tbody tr").forEach((tr,i)=>{ tr.style.cursor="pointer"; tr.onclick=()=>openSite(SITES[i].id); });
+}
+async function openSite(id, silent){
+  currentSiteId=id;
+  const s=SITES.find(x=>x.id===id)||{};
+  const d=$("#siteDetail"); d.classList.remove("hidden");
+  $("#siteDetailTitle").innerHTML=`${s.name||id} <span class="muted" style="font-size:13px;font-weight:400">${s.org||""} · ${s.site_key||""}</span>`;
+  if(!silent) d.scrollIntoView({behavior:"smooth",block:"start"});
+  try{
+    const gws=await api("/api/v1/admin/sites/"+id+"/gateways");
+    $("#siteGwTable").innerHTML=(gws&&gws.length)?tableHTML(
+      [{label:"Gateway key",render:g=>`<span style="font-family:monospace;font-size:12px">${g.gateway_key}</span>`},
+       {label:"Client ID",render:g=>`<span style="font-family:monospace;font-size:12px">${g.client_id}</span>`},
+       {label:"Enabled",render:g=>g.enabled?'<span class="pill ok">yes</span>':'<span class="pill bad">no</span>'},
+       {label:"Last seen (token)",render:g=>dt(g.last_seen_at)}],
+      gws):'<div class="muted">No gateways registered for this site.</div>';
+  }catch(e){ $("#siteGwTable").innerHTML='<div class="err">'+e.message+'</div>'; }
+  const box=$("#siteStreams"); box.innerHTML="";
+  for(const st of SITE_STREAMS){
+    const card=document.createElement("div"); card.className="card"; card.style.marginTop="12px";
+    card.innerHTML=`<h3>${st.key}</h3><div class="body muted">loading…</div>`;
+    box.appendChild(card);
+    const url=st.path+"?site_id="+id+(st.summary?"":"&limit=1");
+    api(url).then(r=>{
+      const row = st.summary ? r : ((r&&r.rows&&r.rows[0]) || (r&&r.latest) || (Array.isArray(r)?r[0]:null));
+      card.querySelector(".body").innerHTML = row ? kvTable(row) : '<div class="muted">No data for this site yet.</div>';
+    }).catch(e=>{ card.querySelector(".body").innerHTML='<div class="muted">'+(/403/.test(e.message)?"not permitted for this account":"unavailable")+'</div>'; });
+  }
 }
 
 // ---------------- rendering helpers ----------------
@@ -456,7 +578,7 @@ async function loadRecentMessages(){
       rows) : '<div class="muted">No recent messages.</div>';
   }catch(e){ $("#blRecent").innerHTML='<div class="err">'+e.message+'</div>'; }
 }
-function backlogStart(){ backlogStop(); if($("#blAuto").checked) backlogTimer=setInterval(loadBacklogTab,10000); }
+function backlogStart(){ backlogStop(); }   // per-tab timer retired; master 5s timer drives refresh
 function backlogStop(){ if(backlogTimer){ clearInterval(backlogTimer); backlogTimer=null; } }
 
 // ---------------- LIVE DATA (polled, never stored) ----------------
@@ -482,8 +604,23 @@ async function loadLive(){
     loadBacklog("#liveBacklog");
   }catch(e){ $("#liveErr").textContent=e.message; liveStop(); }
 }
-function liveStart(){ liveStop(); if($("#liveAuto").checked){ liveTimer=setInterval(loadLive, parseInt($("#liveInt").value,10)); } }
+function liveStart(){ liveStop(); }   // per-tab timer retired; master 5s timer drives refresh
 function liveStop(){ if(liveTimer){ clearInterval(liveTimer); liveTimer=null; } }
+
+// ---------------- unified auto-refresh: every tab, every 5s ----------------
+let masterTimer=null;
+function activeView(){ const t=document.querySelector("nav .tab.active"); return t?t.dataset.view:"mgmt"; }
+function refreshActive(){
+  const v=activeView();
+  if(v==="mgmt") loadMgmt();
+  else if(v==="analyst") loadAnalyst();
+  else if(v==="live") loadLive();
+  else if(v==="backlog") loadBacklogTab();
+  else if(v==="sites"){ if(currentSiteId) openSite(currentSiteId,true); }
+}
+function masterCadence(){ const s=$("#liveInt"); const ms=s?parseInt(s.value,10):5000; return (ms>0?ms:5000); }
+function masterStart(){ masterStop(); masterTimer=setInterval(refreshActive, masterCadence()); }
+function masterStop(){ if(masterTimer){ clearInterval(masterTimer); masterTimer=null; } }
 
 // ---------------- wiring ----------------
 function loadAll(){ loadMgmt(); loadAnalyst(); }
@@ -494,16 +631,19 @@ document.querySelectorAll("nav .tab").forEach(t=>t.onclick=()=>{
   $("#view-analyst").classList.toggle("hidden",v!=="analyst");
   $("#view-live").classList.toggle("hidden",v!=="live");
   $("#view-backlog").classList.toggle("hidden",v!=="backlog");
-  if(v==="live"){ loadLive(); liveStart(); } else { liveStop(); }
-  if(v==="backlog"){ loadBacklogTab(); backlogStart(); } else { backlogStop(); }
+  $("#view-sites").classList.toggle("hidden",v!=="sites");
+  if(v==="live") loadLive(); else liveStop();
+  if(v==="backlog") loadBacklogTab(); else backlogStop();
+  if(v==="sites") loadSitesPage();
+  masterStart();
 });
-$("#blAuto").onchange=backlogStart;
+$("#blAuto").onchange=e=>e.target.checked?masterStart():masterStop();
 $("#blReset").onclick=()=>{ backlogBaseline=null; loadBacklogTab(); };
 $("#blItemsOrder").onchange=loadBacklogItems;
 $("#blItemsLimit").onchange=loadBacklogItems;
 $("#liveSub").onchange=loadLive;
-$("#liveInt").onchange=liveStart;
-$("#liveAuto").onchange=liveStart;
+$("#liveInt").onchange=()=>{ loadLive(); masterStart(); };
+$("#liveAuto").onchange=e=>e.target.checked?masterStart():masterStop();
 $("#liveNow").onclick=loadLive;
 $("#loginBtn").onclick=login;
 $("#password").addEventListener("keydown",e=>{if(e.key==="Enter")login();});
@@ -511,6 +651,7 @@ $("#logoutBtn").onclick=logout;
 $("#refreshBtn").onclick=loadAll;
 $("#window").onchange=loadAnalyst;
 $("#freqSub").onchange=loadFreq;
+$("#siteSel").onchange=updateSiteGateways;
 
 // boot
 $("#baseUrl").value=BASE;
